@@ -1,0 +1,94 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>PDF RAG with FAISS</title>
+</head>
+<body>
+  <h1>PDF RAG Demo (FAISS)</h1>
+  
+  <h2>Upload PDF</h2>
+  <input type="file" id="pdfFile" accept=".pdf" />
+  <button id="uploadBtn">Upload & Ingest</button>
+
+  <h2>Query the Vector Store</h2>
+  <textarea id="queryText" rows="3" cols="60" placeholder="Enter your query here..."></textarea><br>
+  <button id="queryBtn">Query</button>
+  
+  <h3>Results</h3>
+  <div id="results"></div>
+
+  <script>
+    const uploadBtn = document.getElementById("uploadBtn");
+    const pdfFile = document.getElementById("pdfFile");
+    const queryBtn = document.getElementById("queryBtn");
+    const queryText = document.getElementById("queryText");
+    const resultsDiv = document.getElementById("results");
+    const BASE_URL = "http://127.0.0.1:5001"; // match your FastAPI port
+
+    uploadBtn.addEventListener("click", async () => {
+      if (!pdfFile.files.length) {
+        alert("Please select a PDF file first.");
+        return;
+      }
+      const file = pdfFile.files[0];
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const response = await fetch(`${BASE_URL}/upload-pdf`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        alert(data.message);
+      } catch (error) {
+        console.error(error);
+        alert("Failed to upload and ingest PDF.");
+      }
+    });
+
+    queryBtn.addEventListener("click", async () => {
+      const query = queryText.value.trim();
+      if (!query) {
+        alert("Please enter a query.");
+        return;
+      }
+      const formData = new FormData();
+      formData.append("query", query);
+      formData.append("top_k", "5");
+
+      try {
+        const response = await fetch(`${BASE_URL}/query`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        displayResults(data.results);
+      } catch (error) {
+        console.error(error);
+        alert("Query failed.");
+      }
+    });
+
+    function displayResults(results) {
+      resultsDiv.innerHTML = "";
+      if (!results || results.length === 0) {
+        resultsDiv.textContent = "No results found.";
+        return;
+      }
+      results.forEach(res => {
+        const div = document.createElement("div");
+        div.innerHTML = `
+          <hr>
+          <p><strong>Rank:</strong> ${res.rank}</p>
+          <p><strong>Source:</strong> ${res.source}</p>
+          <p><strong>Content:</strong> ${res.content}</p>
+        `;
+        resultsDiv.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>

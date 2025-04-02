@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pdfplumber
+langchain
+chromadb==0.3.26
+sentence-transformers
+requests
