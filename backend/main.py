@@ -44,17 +44,21 @@ app.add_middleware(
 embedding_function = HuggingFaceEmbeddings()  # or OpenAIEmbeddings(openai_api_key=...)
 faiss_store = None  # We'll store our in-memory FAISS index here.
 
-
 @app.on_event("startup")
 def startup_event():
     """
     Runs when FastAPI starts. Initialize your FAISS store if needed.
     """
     global faiss_store
-    # Initially, there's no data, so we set it to None or an empty store.
+    # Initially, there's no data, so we set it to None.
     faiss_store = None
     logging.info("FAISS vector store is ready to ingest data.")
 
+def normalize_text(text: str) -> str:
+    """
+    Normalize text for deduplication: strip, lowercase, and collapse whitespace.
+    """
+    return " ".join(text.strip().lower().split())
 
 @app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...)):
@@ -62,9 +66,9 @@ async def upload_pdf(file: UploadFile = File(...)):
     """
     Upload and ingest a PDF. We'll:
       1. Save the file temporarily
-      2. Extract text + table data
+      2. Extract text and table data
       3. Chunk the text
-      4. Embed + store in FAISS
+      4. Embed and store in FAISS
     """
     global faiss_store
 
@@ -87,8 +91,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     # Create Document list
     docs = [Document(page_content=c, metadata={"source": file.filename}) for c in chunks]
 
-    # If we haven't created the store yet, create it from scratch;
-    # otherwise, add to existing.
+    # If we haven't created the store yet, create it; otherwise, add to it.
     if faiss_store is None:
         faiss_store = FAISS.from_documents(docs, embedding_function)
     else:
@@ -99,21 +102,31 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     return JSONResponse({"status": "success", "message": "PDF ingested successfully."})
 
-
 @app.post("/query")
-async def query_documents(query: str = Form(...), top_k: int = Form(5)):
+async def query_documents(query: str = Form(...), top_k: int = Form(3)):
     """
     Query the in-memory FAISS index for matching chunks.
-    Return top_k results.
+    Return top_k unique results (based on normalized content) while preserving the order.
     """
     global faiss_store
     if faiss_store is None:
         return JSONResponse({"error": "No documents are ingested yet."}, status_code=400)
 
+    # Retrieve results from FAISS (in order of similarity)
     results = faiss_store.similarity_search(query, k=top_k)
-    # Return the chunk content + metadata
+
+    unique_docs = []
+    seen = set()
+    for doc in results:
+        norm_content = normalize_text(doc.page_content)
+        if norm_content in seen:
+            continue
+        seen.add(norm_content)
+        unique_docs.append(doc)
+
+    # Build response preserving original ranking order for unique results.
     matches = []
-    for i, doc in enumerate(results):
+    for i, doc in enumerate(unique_docs):
         matches.append({
             "rank": i + 1,
             "source": doc.metadata.get("source", "N/A"),
@@ -121,7 +134,6 @@ async def query_documents(query: str = Form(...), top_k: int = Form(5)):
         })
 
     return {"query": query, "results": matches}
-
 
 def extract_text_and_tables(pdf_path: str) -> str:
     """
@@ -138,5 +150,4 @@ def extract_text_and_tables(pdf_path: str) -> str:
                 for row in table:
                     row_text = ", ".join(str(cell) for cell in row)
                     extracted_text.append(row_text)
-
     return "\n".join(extracted_text)
