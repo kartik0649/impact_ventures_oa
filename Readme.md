@@ -1,4 +1,4 @@
-# PDF RAG with ChromaDB and LangChain
+# PDF RAG with FAISS and LangChain
 
 This repository demonstrates how to:
 
@@ -13,3 +13,5 @@ This repository demonstrates how to:
 1. **Clone the repo**:
    ```bash
    git clone https://github.com/YOUR_USERNAME/pdf-rag-chromadb.git
+
+
